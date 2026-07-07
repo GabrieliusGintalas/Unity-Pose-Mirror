@@ -205,8 +205,8 @@ namespace GabeGin.PoseTools
                 SaveSettings();
             }
 
-            _settings.mirror.showAdvancedMirror = EditorGUILayout.Foldout(_settings.mirror.showAdvancedMirror, "Advanced (component signs)", true);
-            if (_settings.mirror.showAdvancedMirror)
+            _settings.showAdvancedMirror = EditorGUILayout.Foldout(_settings.showAdvancedMirror, "Advanced (component signs)", true);
+            if (_settings.showAdvancedMirror)
             {
                 EditorGUI.indentLevel++;
                 EditorGUILayout.HelpBox("Which components get negated when mirroring. The correct signs depend on how your bones are oriented — tweak if a flip looks wrong, then re-test.", MessageType.None);
