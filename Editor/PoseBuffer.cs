@@ -196,4 +196,115 @@ namespace GabeGin.PoseTools
             if (s_data == null) Load();
         }
     }
+
+    /// <summary>
+    /// A persisted snapshot of the rig's neutral (rest) bone orientations,
+    /// relative to the rig root. Paste Flipped uses it to mirror each bone's
+    /// rotation RELATIVE TO REST — so a bone's own resting orientation is
+    /// accounted for, exactly like Blender, instead of assuming both sides share
+    /// a perfectly symmetric rest. Stored per project in EditorPrefs so it
+    /// survives editor restarts.
+    /// </summary>
+    public static class PoseRest
+    {
+        const string kKeyPrefix = "GabeGin.PoseTools.Rest.";
+
+        [Serializable]
+        struct RestEntry { public string name; public string path; public Quaternion rootRotation; }
+
+        [Serializable]
+        class RestData { public List<RestEntry> bones = new List<RestEntry>(); }
+
+        static RestData s_data;
+        static Dictionary<string, int> s_nameCounts;
+        static Dictionary<string, Quaternion> s_byName;
+        static Dictionary<string, Quaternion> s_byPath;
+
+        static string Key { get { return kKeyPrefix + StableHash(Application.dataPath).ToString("X8"); } }
+
+        public static bool HasRest { get { return Data.bones.Count > 0; } }
+        public static int Count { get { return Data.bones.Count; } }
+
+        static RestData Data { get { if (s_data == null) Load(); return s_data; } }
+
+        static void Load()
+        {
+            string json = EditorPrefs.GetString(Key, "");
+            s_data = string.IsNullOrEmpty(json) ? new RestData() : JsonUtility.FromJson<RestData>(json);
+            if (s_data == null) s_data = new RestData();
+            Rebuild();
+        }
+
+        static void Save()
+        {
+            EditorPrefs.SetString(Key, JsonUtility.ToJson(s_data));
+            Rebuild();
+        }
+
+        static void Rebuild()
+        {
+            s_nameCounts = new Dictionary<string, int>();
+            s_byName = new Dictionary<string, Quaternion>();
+            s_byPath = new Dictionary<string, Quaternion>();
+            foreach (var e in s_data.bones)
+            {
+                int c;
+                s_nameCounts.TryGetValue(e.name, out c);
+                s_nameCounts[e.name] = c + 1;
+                s_byName[e.name] = e.rootRotation;
+                if (!string.IsNullOrEmpty(e.path)) s_byPath[e.path] = e.rootRotation;
+            }
+        }
+
+        /// <summary>Snapshot every bone's current root-relative orientation as the rest pose.</summary>
+        public static void Capture(Transform root, IList<Transform> bones)
+        {
+            var data = new RestData();
+            for (int i = 0; i < bones.Count; i++)
+            {
+                var t = bones[i];
+                if (t == null) continue;
+                var e = new RestEntry();
+                e.name = t.name;
+                e.path = PoseSkeleton.GetRelativePath(t, root);
+                e.rootRotation = Quaternion.Inverse(root.rotation) * t.rotation;
+                data.bones.Add(e);
+            }
+            s_data = data;
+            Save();
+        }
+
+        public static void Clear()
+        {
+            s_data = new RestData();
+            Save();
+        }
+
+        /// <summary>Rest orientation (relative to root) for a bone, by name with a path fallback.</summary>
+        public static bool TryGetRest(string name, string pathHint, out Quaternion rest)
+        {
+            if (s_data == null) Load();
+            int count;
+            s_nameCounts.TryGetValue(name, out count);
+
+            if (count == 1) return s_byName.TryGetValue(name, out rest);
+            if (count > 1)
+            {
+                if (pathHint != null && s_byPath.TryGetValue(pathHint, out rest)) return true;
+                return s_byName.TryGetValue(name, out rest);
+            }
+            rest = Quaternion.identity;
+            return false;
+        }
+
+        static uint StableHash(string s)
+        {
+            unchecked
+            {
+                uint hash = 2166136261u;
+                for (int i = 0; i < s.Length; i++) { hash ^= s[i]; hash *= 16777619u; }
+                return hash;
+            }
+        }
+    }
 }

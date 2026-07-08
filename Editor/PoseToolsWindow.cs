@@ -100,7 +100,7 @@ namespace GabeGin.PoseTools
             EditorGUILayout.Space();
             DrawValidationSection(target);
             EditorGUILayout.Space();
-            DrawMirrorSection();
+            DrawMirrorSection(target);
             EditorGUILayout.Space();
             DrawActionSection(target, rigBones, boneCount, inAnimMode);
             EditorGUILayout.Space();
@@ -465,7 +465,7 @@ namespace GabeGin.PoseTools
 
         // ------------------------------------------------ mirror settings
 
-        void DrawMirrorSection()
+        void DrawMirrorSection(GameObject target)
         {
             EditorGUILayout.LabelField("Mirror", EditorStyles.boldLabel);
 
@@ -479,9 +479,35 @@ namespace GabeGin.PoseTools
                 SaveSettings();
             }
 
+            // Rest pose: lets the flip account for each bone's own resting
+            // orientation. Skinned rigs get this automatically from the bind pose;
+            // Set Rest Pose is an optional override (and covers non-skinned rigs).
+            EditorGUILayout.BeginHorizontal();
+            using (new EditorGUI.DisabledScope(target == null))
+            {
+                if (GUILayout.Button(new GUIContent("Set Rest Pose",
+                    "Optional. Snapshot the rig's CURRENT bone orientations as the neutral 'rest', overriding the automatic bind-pose rest. Use it for non-skinned rigs, or when the bind pose isn't the rest you want.")))
+                {
+                    PoseRest.Capture(target.transform, PoseSkeleton.GetBones(target));
+                    Debug.Log("[Pose Tools] Rest pose set: " + PoseRest.Count + " bones.");
+                }
+            }
+            using (new EditorGUI.DisabledScope(!PoseRest.HasRest))
+            {
+                if (GUILayout.Button("Clear", EditorStyles.miniButton, GUILayout.Width(50f)))
+                    PoseRest.Clear();
+            }
+            EditorGUILayout.EndHorizontal();
+
+            string restStatus =
+                PoseRest.HasRest ? "Rest: manual snapshot (" + PoseRest.Count + " bones)." :
+                (target != null && HasBindPoses(target)) ? "Rest: automatic, from the skinned mesh bind pose." :
+                "Rest: none — flip assumes a symmetric rest. Set Rest Pose for asymmetric non-skinned rigs.";
+            EditorGUILayout.LabelField(restStatus, EditorStyles.miniLabel);
+
             EditorGUILayout.HelpBox(
-                "Flips across the rig's local " + _settings.mirror.axis + " plane, like Blender — no per-bone tuning. " +
-                "Each bone's orientation is handled automatically because the mirror is computed in the rig's space, not each bone's local space.",
+                "Flips across the rig's local " + _settings.mirror.axis + " plane, like Blender — no per-bone sign tuning. " +
+                "Each bone's own rest orientation is respected using the skinned mesh's bind pose (no T-pose needed); Set Rest Pose only if the rig isn't skinned or you want a different rest.",
                 MessageType.None);
         }
 
@@ -662,6 +688,13 @@ namespace GabeGin.PoseTools
 
             Quaternion rootRot = root.rotation;
 
+            // Rest orientations used by the flip: taken from the skinned mesh's
+            // bind pose automatically (no T-pose needed), and overridden by a
+            // manual Set Rest Pose when present. byName maps a partner name back to
+            // its transform so its bind rest can be looked up.
+            var bindRest = BuildBindRest(go, root);
+            var byName = BuildNameMap(bones);
+
             int group = BeginGroup("Paste Pose Flipped");
 
             var used = new HashSet<string>();
@@ -679,13 +712,29 @@ namespace GabeGin.PoseTools
                 BonePose pose;
                 if (!PoseBuffer.TryResolveByName(partnerName, pathHint, out pose)) { noPartner++; continue; }
 
-                // ROTATION ONLY. Mirror the partner's orientation in ROOT space
-                // (correct for any bone orientation — Blender's behaviour), then
-                // re-express it in this bone's local space relative to its live
-                // (already-mirrored, parent-first) parent. Position and scale are
-                // left untouched: a pose flip swaps orientations, it must not move
-                // bones off their rest offsets or the rig stretches/detaches.
-                Quaternion worldRot = rootRot * settings.mirror.MirrorRootRotation(pose.rootRotation);
+                // ROTATION ONLY, and REST-AWARE. Mirror the partner's rotation
+                // relative to ITS rest, then re-apply it on top of THIS bone's own
+                // rest — so each bone's resting orientation is respected (Blender's
+                // behaviour) rather than assuming both sides share a symmetric rest.
+                // Rest comes from the bind pose / manual capture; without either we
+                // fall back to mirroring the absolute root-relative orientation.
+                // Everything is ROOT space; position and scale are left untouched so
+                // bones keep their rest offsets.
+                Transform srcBone;
+                byName.TryGetValue(partnerName, out srcBone);
+
+                Quaternion srcRest, dstRest, targetRoot;
+                if (TryGetRest(srcBone, partnerName, pathHint, bindRest, out srcRest) &&
+                    TryGetRest(b, b.name, PoseSkeleton.GetRelativePath(b, root), bindRest, out dstRest))
+                {
+                    Quaternion srcDelta = Quaternion.Inverse(srcRest) * pose.rootRotation;
+                    targetRoot = dstRest * settings.mirror.MirrorRootRotation(srcDelta);
+                }
+                else
+                {
+                    targetRoot = settings.mirror.MirrorRootRotation(pose.rootRotation);
+                }
+                Quaternion worldRot = rootRot * targetRoot;
 
                 Undo.RecordObject(b, "Paste Pose Flipped");
                 Transform parent = b.parent;
@@ -749,6 +798,70 @@ namespace GabeGin.PoseTools
                 if (target != null && added.Add(target)) result.Add(target);
             }
             return result;
+        }
+
+        // True if any skinned mesh under the rig carries bind poses (so the flip
+        // can read an automatic rest without a manual snapshot).
+        static bool HasBindPoses(GameObject go)
+        {
+            var smrs = go.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            foreach (var smr in smrs)
+                if (smr != null && smr.sharedMesh != null &&
+                    smr.sharedMesh.bindposes != null && smr.sharedMesh.bindposes.Length > 0)
+                    return true;
+            return false;
+        }
+
+        static Dictionary<string, Transform> BuildNameMap(List<Transform> bones)
+        {
+            var m = new Dictionary<string, Transform>();
+            foreach (var t in bones)
+                if (t != null && !m.ContainsKey(t.name)) m[t.name] = t;
+            return m;
+        }
+
+        // Each skinned bone's REST orientation (relative to the rig root), read
+        // from the mesh bind pose — the pose the rig was skinned in. This is the
+        // "rest" without needing the user to pose a T-pose. Non-skinned rigs have
+        // no bind pose and won't appear here.
+        static Dictionary<Transform, Quaternion> BuildBindRest(GameObject rigRoot, Transform root)
+        {
+            var map = new Dictionary<Transform, Quaternion>();
+            if (rigRoot == null) return map;
+
+            Quaternion invRoot = Quaternion.Inverse(root.rotation);
+            var smrs = rigRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            foreach (var smr in smrs)
+            {
+                if (smr == null || smr.sharedMesh == null) continue;
+                var binds = smr.sharedMesh.bindposes;
+                var smrBones = smr.bones;
+                if (binds == null || smrBones == null) continue;
+
+                int n = Mathf.Min(binds.Length, smrBones.Length);
+                Matrix4x4 smrLTW = smr.transform.localToWorldMatrix;
+                for (int i = 0; i < n; i++)
+                {
+                    var bone = smrBones[i];
+                    if (bone == null || map.ContainsKey(bone)) continue;
+                    // bindpose maps renderer-local -> bone-local at bind, so its
+                    // inverse composed with the renderer gives the bone's rest world.
+                    Matrix4x4 restWorld = smrLTW * binds[i].inverse;
+                    map[bone] = invRoot * restWorld.rotation;
+                }
+            }
+            return map;
+        }
+
+        // Rest orientation for a bone: a manual Set Rest Pose snapshot wins,
+        // otherwise the bind-pose value. Returns false if neither is available.
+        static bool TryGetRest(Transform bone, string name, string pathHint,
+            Dictionary<Transform, Quaternion> bindRest, out Quaternion rest)
+        {
+            if (PoseRest.TryGetRest(name, pathHint, out rest)) return true;
+            if (bone != null && bindRest.TryGetValue(bone, out rest)) return true;
+            rest = Quaternion.identity;
+            return false;
         }
 
         // Order bones so every bone comes after all of its ancestors, by depth

@@ -128,6 +128,15 @@ parent-local space, it's correct regardless of how the bones are oriented, so
 there are **no per-component signs to tune**. **X** is right for virtually all
 character rigs.
 
+**Rest pose** — Paste Flipped mirrors each bone's rotation *relative to its rest*
+and re-applies it on top of the target bone's own rest, so a bone's resting
+orientation is respected (Blender's behaviour) — even for paired bones whose
+rests differ (e.g. both at `0,0,0` local rotation but pointing different ways).
+For **skinned** rigs this rest is read automatically from the mesh's **bind
+pose** — no T-pose needed. **Set Rest Pose** is an optional override: it snapshots
+the rig's current orientations as the rest, for non-skinned rigs or when the bind
+pose isn't the rest you want. Stored per project.
+
 **Actions** — **Copy Pose**, **Paste Pose**, **Paste Pose Flipped**, plus a
 buffer readout and **Clear**. The **Paste Flipped: selected bones only** toggle
 writes the mirrored pose onto the *partner* of each bone you've selected in the
