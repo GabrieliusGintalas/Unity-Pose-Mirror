@@ -35,7 +35,8 @@ namespace GabeGin.PoseTools
 
         // Colors for the Scene-view skeleton overlay.
         static readonly Color kBoneColor = new Color(0.40f, 0.75f, 1f, 0.9f);
-        static readonly Color kSelBoneColor = new Color(1f, 0.78f, 0.20f, 1f);
+        static readonly Color kSelBoneColor = new Color(0.55f, 1f, 0.55f, 1f);       // selected: light green edges
+        static readonly Color kSelBoneFill = new Color(0.55f, 1f, 0.55f, 0.4f);      // selected: light green fill
 
         [MenuItem("Window/Animation/Pose Tools")]
         public static void Open()
@@ -214,7 +215,7 @@ namespace GabeGin.PoseTools
             if (bones.Count == 0) return;
 
             var boneSet = new HashSet<Transform>(bones);
-            var active = Selection.activeTransform;
+            var selected = new HashSet<Transform>(Selection.transforms);
             var prevZTest = Handles.zTest;
 
             // "On top" renders the whole skeleton in front of the mesh (x-ray);
@@ -223,21 +224,24 @@ namespace GabeGin.PoseTools
                 ? UnityEngine.Rendering.CompareFunction.Always
                 : UnityEngine.Rendering.CompareFunction.LessEqual;
 
+            // A bone's octahedron runs parent -> bone, so it "belongs" to the
+            // child bone; fill it solid green when that bone is selected.
             for (int i = 0; i < bones.Count; i++)
             {
                 var b = bones[i];
                 if (b == null) continue;
                 var parentBone = NearestBoneAncestor(b, boneSet);
                 if (parentBone == null) continue;
-                bool hot = b == active || parentBone == active;
-                DrawOctahedronBone(parentBone.position, b.position, hot ? kSelBoneColor : kBoneColor);
+                bool isSel = selected.Contains(b);
+                DrawOctahedronBone(parentBone.position, b.position,
+                    isSel ? kSelBoneColor : kBoneColor, isSel, kSelBoneFill);
             }
 
             for (int i = 0; i < bones.Count; i++)
             {
                 var b = bones[i];
                 if (b == null) continue;
-                Handles.color = b == active ? kSelBoneColor : kBoneColor;
+                Handles.color = selected.Contains(b) ? kSelBoneColor : kBoneColor;
                 float size = HandleUtility.GetHandleSize(b.position) * 0.05f;
                 if (Handles.Button(b.position, Quaternion.identity, size, size * 1.7f, Handles.SphereHandleCap))
                 {
@@ -284,7 +288,8 @@ namespace GabeGin.PoseTools
 
         // Classic Blender octahedral bone from head to tail: four short edges out
         // to a ring near the head, the ring loop, then four edges in to the tail.
-        static void DrawOctahedronBone(Vector3 head, Vector3 tail, Color color)
+        // When filled, the eight triangular faces are shaded (used for selection).
+        static void DrawOctahedronBone(Vector3 head, Vector3 tail, Color edgeColor, bool filled, Color fillColor)
         {
             Vector3 dir = tail - head;
             float len = dir.magnitude;
@@ -302,7 +307,17 @@ namespace GabeGin.PoseTools
             Vector3 u = ring + up * w;
             Vector3 d = ring - up * w;
 
-            Handles.color = color;
+            if (filled)
+            {
+                Handles.color = fillColor;
+                // 4 faces from the head, 4 from the tail.
+                Handles.DrawAAConvexPolygon(head, a, u); Handles.DrawAAConvexPolygon(head, u, c);
+                Handles.DrawAAConvexPolygon(head, c, d); Handles.DrawAAConvexPolygon(head, d, a);
+                Handles.DrawAAConvexPolygon(tail, a, u); Handles.DrawAAConvexPolygon(tail, u, c);
+                Handles.DrawAAConvexPolygon(tail, c, d); Handles.DrawAAConvexPolygon(tail, d, a);
+            }
+
+            Handles.color = edgeColor;
             Handles.DrawLine(head, a); Handles.DrawLine(head, u); Handles.DrawLine(head, c); Handles.DrawLine(head, d);
             Handles.DrawLine(a, u); Handles.DrawLine(u, c); Handles.DrawLine(c, d); Handles.DrawLine(d, a);
             Handles.DrawLine(a, tail); Handles.DrawLine(u, tail); Handles.DrawLine(c, tail); Handles.DrawLine(d, tail);
