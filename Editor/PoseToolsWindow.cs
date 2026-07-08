@@ -173,8 +173,13 @@ namespace GabeGin.PoseTools
             EditorGUI.BeginChangeCheck();
             _settings.showSkeletonOverlay = EditorGUILayout.ToggleLeft(
                 new GUIContent("Show skeleton in Scene view",
-                    "Draw the rig's bones as a clickable overlay in the Scene view. Click a bone there to select it — the rig above stays the edit target."),
+                    "Draw the rig's bones as a clickable overlay in the Scene view. Click a bone there to select it — the rig above stays the edit target. Also toggleable from the panel in the Scene view."),
                 _settings.showSkeletonOverlay);
+            using (new EditorGUI.DisabledScope(!_settings.showSkeletonOverlay))
+                _settings.overlayOnTop = EditorGUILayout.ToggleLeft(
+                    new GUIContent("Render on top (x-ray)",
+                        "Draw the skeleton in front of the mesh instead of letting the mesh occlude it."),
+                    _settings.overlayOnTop);
             if (EditorGUI.EndChangeCheck())
             {
                 SaveSettings();
@@ -195,10 +200,15 @@ namespace GabeGin.PoseTools
         void OnSceneGUI(SceneView sceneView)
         {
             if (_settings == null) _settings = PoseToolsSettings.Load();
-            if (!_settings.showSkeletonOverlay) return;
 
             SyncRigRoot();
             if (_rigRoot == null) return;
+
+            // In-viewport controls (visible even when the skeleton is hidden, so
+            // it can be toggled back on).
+            DrawSceneOverlayControls(sceneView);
+
+            if (!_settings.showSkeletonOverlay) return;
 
             var bones = PoseSkeleton.GetBones(_rigRoot.gameObject);
             if (bones.Count == 0) return;
@@ -207,8 +217,12 @@ namespace GabeGin.PoseTools
             var active = Selection.activeTransform;
             var prevZTest = Handles.zTest;
 
-            // Bone shapes respect depth so they sit on the mesh.
-            Handles.zTest = UnityEngine.Rendering.CompareFunction.LessEqual;
+            // "On top" renders the whole skeleton in front of the mesh (x-ray);
+            // otherwise the mesh occludes it.
+            Handles.zTest = _settings.overlayOnTop
+                ? UnityEngine.Rendering.CompareFunction.Always
+                : UnityEngine.Rendering.CompareFunction.LessEqual;
+
             for (int i = 0; i < bones.Count; i++)
             {
                 var b = bones[i];
@@ -219,8 +233,6 @@ namespace GabeGin.PoseTools
                 DrawOctahedronBone(parentBone.position, b.position, hot ? kSelBoneColor : kBoneColor);
             }
 
-            // Joint handles draw on top so they're always easy to click.
-            Handles.zTest = UnityEngine.Rendering.CompareFunction.Always;
             for (int i = 0; i < bones.Count; i++)
             {
                 var b = bones[i];
@@ -235,6 +247,30 @@ namespace GabeGin.PoseTools
             }
 
             Handles.zTest = prevZTest;
+        }
+
+        // Small on-screen panel in the Scene view (top-left) to toggle the
+        // skeleton overlay and its on-top / x-ray rendering without going back to
+        // the Pose Tools window.
+        void DrawSceneOverlayControls(SceneView sceneView)
+        {
+            Handles.BeginGUI();
+            var rect = new Rect(8f, 8f, 168f, 52f);
+            GUILayout.BeginArea(rect, GUIContent.none, EditorStyles.helpBox);
+
+            EditorGUI.BeginChangeCheck();
+            _settings.showSkeletonOverlay = GUILayout.Toggle(_settings.showSkeletonOverlay, " Skeleton overlay");
+            using (new EditorGUI.DisabledScope(!_settings.showSkeletonOverlay))
+                _settings.overlayOnTop = GUILayout.Toggle(_settings.overlayOnTop, " Render on top (x-ray)");
+            if (EditorGUI.EndChangeCheck())
+            {
+                SaveSettings();
+                Repaint();          // refresh the window's matching toggles
+                sceneView.Repaint();
+            }
+
+            GUILayout.EndArea();
+            Handles.EndGUI();
         }
 
         // Nearest ancestor of b that is also a bone in the rig (skips non-bone

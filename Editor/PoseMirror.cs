@@ -262,6 +262,10 @@ namespace GabeGin.PoseTools
         // Draw the rig's skeleton as a clickable overlay in the Scene view.
         public bool showSkeletonOverlay = true;
 
+        // Render the skeleton overlay in front of the mesh (x-ray) instead of
+        // letting the mesh occlude it.
+        public bool overlayOnTop = true;
+
         // EditorPrefs is per-user/per-machine; scope the key to this project so
         // conventions don't bleed between projects on the same machine.
         static string Key { get { return "GabeGin.PoseTools.Settings." + ProjectId(); } }

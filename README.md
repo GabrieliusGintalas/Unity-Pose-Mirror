@@ -97,7 +97,10 @@ field to change it.
 **Skeleton Overlay** — draws the rig's bones directly in the **Scene view** as
 clickable octahedral gizmos (like Blender's armature). Click a bone in the
 viewport to select it — no Hierarchy hunting — and selecting one never changes
-the locked rig above. Toggle it with **Show skeleton in Scene view**.
+the locked rig above. A small panel in the top-left of the Scene view toggles
+**Skeleton overlay** and **Render on top (x-ray)** (draw the bones in front of
+the mesh instead of letting it occlude them); the same toggles live in the
+window.
 
 **Naming Convention** — how left/right bones are labelled:
 
