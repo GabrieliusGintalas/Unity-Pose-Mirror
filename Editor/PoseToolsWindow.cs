@@ -215,7 +215,10 @@ namespace GabeGin.PoseTools
             if (bones.Count == 0) return;
 
             var boneSet = new HashSet<Transform>(bones);
-            var selected = new HashSet<Transform>(Selection.transforms);
+            // Selection.gameObjects (NOT Selection.transforms): transforms filters
+            // out a selected bone whose parent is also selected, which left
+            // shift-selected child bones un-highlighted.
+            var selected = new HashSet<GameObject>(Selection.gameObjects);
             var prevZTest = Handles.zTest;
 
             // "On top" renders the whole skeleton in front of the mesh (x-ray);
@@ -232,7 +235,7 @@ namespace GabeGin.PoseTools
                 if (b == null) continue;
                 var parentBone = NearestBoneAncestor(b, boneSet);
                 if (parentBone == null) continue;
-                bool isSel = selected.Contains(b);
+                bool isSel = selected.Contains(b.gameObject);
                 DrawOctahedronBone(parentBone.position, b.position,
                     isSel ? kSelBoneColor : kBoneColor, isSel, kSelBoneFill);
             }
@@ -241,7 +244,7 @@ namespace GabeGin.PoseTools
             {
                 var b = bones[i];
                 if (b == null) continue;
-                Handles.color = selected.Contains(b) ? kSelBoneColor : kBoneColor;
+                Handles.color = selected.Contains(b.gameObject) ? kSelBoneColor : kBoneColor;
                 float size = HandleUtility.GetHandleSize(b.position) * 0.05f;
                 if (Handles.Button(b.position, Quaternion.identity, size, size * 1.7f, Handles.SphereHandleCap))
                 {
@@ -489,17 +492,17 @@ namespace GabeGin.PoseTools
                 EditorGUILayout.LabelField("Buffer is empty — Copy a pose first.", EditorStyles.miniLabel);
         }
 
-        // Count Selection.transforms that are real bones of this rig (excluding
+        // Count selected GameObjects that are real bones of this rig (excluding
         // the rig root itself — selecting only the root means "the whole rig").
         static int CountSelectedInRig(List<Transform> rigBones, Transform root)
         {
             if (rigBones == null) return 0;
             var set = new HashSet<Transform>(rigBones);
             int n = 0;
-            var sel = Selection.transforms;
+            var sel = Selection.gameObjects;
             for (int i = 0; i < sel.Length; i++)
             {
-                var s = sel[i];
+                var s = sel[i] != null ? sel[i].transform : null;
                 if (s != null && s != root && set.Contains(s)) n++;
             }
             return n;
@@ -679,10 +682,11 @@ namespace GabeGin.PoseTools
             var result = new List<Transform>();
             var added = new HashSet<Transform>();
 
-            var sel = Selection.transforms;
+            // gameObjects, not transforms — see the note in OnSceneGUI.
+            var sel = Selection.gameObjects;
             for (int i = 0; i < sel.Length; i++)
             {
-                var s = sel[i];
+                var s = sel[i] != null ? sel[i].transform : null;
                 if (s == null || s == root || !rigSet.Contains(s)) continue;
                 if (added.Add(s)) result.Add(s);
             }
