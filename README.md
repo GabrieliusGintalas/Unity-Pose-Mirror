@@ -12,12 +12,14 @@ naming convention, exactly like Blender.
   `AnimationMode` + `Undo.RecordObject` path — no reflection into internal Unity
   APIs, so it stays stable across versions.
 - **Blender-accurate mirroring.** Pick the left/right suffix convention; the flip
-  is computed in the rig's own space, so it's correct for any bone orientation
-  with no per-component sign tuning — just like Blender's Paste X-Flipped.
+  reflects each bone's rotation relative to its rest (read automatically from the
+  skinned mesh's bind pose — no T-pose needed), so it's correct for any bone
+  orientation with no per-component sign tuning — just like Blender's Paste
+  X-Flipped.
 - **Scene-view skeleton overlay + selective flip.** See the whole skeleton drawn
-  on the rig in the Scene view (Blender-style bones) and click a bone to select it
-  without hunting the Hierarchy. Flip the whole rig, or just the bones you've
-  selected.
+  on the rig in the Scene view (Blender-style bones); click a bone to select it,
+  Shift-click to multi-select. Flip the whole rig, or write the mirror onto the
+  partners of just the bones you've selected.
 - **Rebindable hotkeys** so you can keep focus on the Animation window.
 
 ## Compatibility
@@ -45,7 +47,7 @@ To pin a version, append a tag: `…/pose-tools.git#v1.0.0`.
 
 Clone (or copy) the repo into your project's `Packages/` folder:
 
-```javascript
+```text
 <YourProject>/Packages/com.gabegin.posetools/
     package.json
     Editor/…
@@ -96,11 +98,12 @@ field to change it.
 
 **Skeleton Overlay** — draws the rig's bones directly in the **Scene view** as
 clickable octahedral gizmos (like Blender's armature). Click a bone in the
-viewport to select it — no Hierarchy hunting — and selecting one never changes
-the locked rig above. A small panel in the top-left of the Scene view toggles
-**Skeleton overlay** and **Render on top (x-ray)** (draw the bones in front of
-the mesh instead of letting it occlude them); the same toggles live in the
-window.
+viewport to select it (Shift/Ctrl/Cmd-click to multi-select) — no Hierarchy
+hunting — and selecting one never changes the locked rig above. Selected bones
+fill **solid green**; bones that were just flipped flash **red**. A small panel
+in the top-left of the Scene view toggles **Skeleton overlay** and **Render on
+top (x-ray)** (draw the bones in front of the mesh instead of letting it occlude
+them); the same toggles live in the window.
 
 **Naming Convention** — how left/right bones are labelled:
 
@@ -179,14 +182,24 @@ always comes down to the naming convention or what's selected:
    copies the whole locked rig for you; if you copy with only a single child bone
    selected (via the hotkey, no window open), you capture just that sub-tree and
    the partners are missing. The console logs how many bones had no partner.
-3. **Check the symmetry axis.** Most characters are symmetric across **X** (the
+3. **Non-skinned rigs: set a rest pose.** Skinned meshes provide the rest
+   automatically (from the bind pose), but a raw Transform hierarchy with no
+   `SkinnedMeshRenderer` has none, so the flip falls back to assuming a symmetric
+   rest. If such a rig's two sides don't rest as mirror images, put it in its rest
+   pose and click **Set Rest Pose** once.
+4. **Check the symmetry axis.** Most characters are symmetric across **X** (the
    left/right axis). If yours was authored facing a different way, try **Y** or
    **Z**. A wrong axis looks like the pose mirroring *up/down* or *front/back*
    instead of *left/right*.
-4. **Re-test with Undo.** Every paste is a single Undo step, so `Ctrl/Cmd+Z` and
+5. **Re-test with Undo.** Every paste is a single Undo step, so `Ctrl/Cmd+Z` and
    try again freely.
 
-The convention + axis are saved per project, so you only set them once.
+The convention, axis, and rest are saved per project, so you only set them once.
+
+> **Humanoid rigs:** Unity's Animation window keys Humanoid *muscle* values, not
+> raw bone transforms, so Copy/Paste (which read and write transforms) won't key
+> into a Humanoid clip. Set the model's **Rig ▸ Animation Type** to **Generic** to
+> use these tools — Pose Tools warns you when a Humanoid rig is selected.
 
 ---
 
@@ -206,15 +219,15 @@ versions). Instead it relies only on public, long-lived APIs:
 
 ## Repo layout
 
-```javascript
+```text
 /package.json
 /README.md
-/LICENSE
+/LICENSE.md
 /CHANGELOG.md
 /Editor/
     PoseTools.asmdef      Editor-only assembly definition
     PoseToolsWindow.cs    the "Pose Tools" EditorWindow + shared commands
-    PoseBuffer.cs         copied-pose storage + name/path lookup
+    PoseBuffer.cs         copied-pose + rest-pose storage, name/path lookup
     PoseSkeleton.cs       generic bone discovery + relative paths
     PoseMirror.cs         suffix convention + mirror math + settings
     PoseShortcuts.cs      rebindable [Shortcut] hotkeys
@@ -222,4 +235,4 @@ versions). Instead it relies only on public, long-lived APIs:
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE.md](LICENSE.md).

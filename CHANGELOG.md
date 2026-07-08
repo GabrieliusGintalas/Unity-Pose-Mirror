@@ -38,11 +38,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   suffixed bones before pasting.
 - **Symmetry-axis selector** — X/Y/Z dropdown (default X) picking the rig's
   left/right axis for the mirror plane.
-- **Rest-aware flip** — Paste Flipped mirrors each bone's rotation relative to its
-  rest and re-applies it on the target's own rest, so paired bones whose rest
-  orientations differ still mirror correctly. Rest is read automatically from the
-  skinned mesh's bind pose (no T-pose needed); **Set Rest Pose** is an optional
-  per-project override for non-skinned rigs.
+- **Rest-aware flip** — Paste Flipped reflects each bone's world-space rotation
+  relative to its rest and re-applies it on the target's own rest, so paired bones
+  whose rest orientations differ still mirror correctly — whether a pair's
+  left/right local axes are mirror images or identical. Rest is read automatically
+  from the skinned mesh's bind pose (no T-pose needed); **Set Rest Pose** is an
+  optional per-project override for non-skinned rigs.
 - **Animation window integration** — requires `AnimationMode` (Record) to be
   active and records keyframes on the current frame via `Undo.RecordObject`; no
   reflection into internal Animation window APIs. Live record-state / target
