@@ -245,7 +245,20 @@ namespace GabeGin.PoseTools
                 float size = HandleUtility.GetHandleSize(b.position) * 0.05f;
                 if (Handles.Button(b.position, Quaternion.identity, size, size * 1.7f, Handles.SphereHandleCap))
                 {
-                    Selection.activeTransform = b;
+                    var e = Event.current;
+                    if (e != null && (e.shift || e.control || e.command))
+                    {
+                        // Additive: toggle this bone in/out of the selection so
+                        // several bones can be picked in the viewport.
+                        var sel = new List<GameObject>(Selection.gameObjects);
+                        if (sel.Contains(b.gameObject)) sel.Remove(b.gameObject);
+                        else sel.Add(b.gameObject);
+                        Selection.objects = sel.ToArray();
+                    }
+                    else
+                    {
+                        Selection.activeGameObject = b.gameObject;
+                    }
                     Repaint();
                 }
             }

@@ -1,6 +1,6 @@
 {
   "name": "com.gabegin.posetools",
-  "version": "2.1.2",
+  "version": "2.1.3",
   "displayName": "Pose Tools",
   "description": "Blender-style Copy Pose / Paste Pose / Paste Pose Flipped for Unity's Animation window. Works on any Generic or Humanoid rig (raw Transform hierarchies) with a fully configurable left/right suffix convention and a tunable mirror axis. Paste operations write keyframes into the clip currently being edited while Record is active.",
   "unity": "2020.3",
