@@ -727,8 +727,13 @@ namespace GabeGin.PoseTools
                 if (TryGetRest(srcBone, partnerName, pathHint, bindRest, out srcRest) &&
                     TryGetRest(b, b.name, PoseSkeleton.GetRelativePath(b, root), bindRest, out dstRest))
                 {
-                    Quaternion srcDelta = Quaternion.Inverse(srcRest) * pose.rootRotation;
-                    targetRoot = dstRest * settings.mirror.MirrorRootRotation(srcDelta);
+                    // Reflect the source's WORLD-space move-from-rest (Lc·Lr⁻¹) and
+                    // re-apply it on the target's rest. Using the world-space delta
+                    // (not a bone-local one) makes the flip correct whether a pair's
+                    // rest frames are mirror images OR identical — so bones with
+                    // either local-axis convention flip the same, consistent way.
+                    Quaternion worldDelta = pose.rootRotation * Quaternion.Inverse(srcRest);
+                    targetRoot = settings.mirror.MirrorRootRotation(worldDelta) * dstRest;
                 }
                 else
                 {
