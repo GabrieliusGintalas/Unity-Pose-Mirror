@@ -33,11 +33,9 @@ namespace GabeGin.PoseTools
         // the _L and _R sides at once.
         Transform _rigRoot;
 
-        // Bone-hierarchy browser state.
-        Vector2 _boneTreeScroll;
-        string _boneSearch = "";
-        readonly HashSet<int> _collapsed = new HashSet<int>();
-        GUIStyle _selectedBoneStyle;
+        // Colors for the Scene-view skeleton overlay.
+        static readonly Color kBoneColor = new Color(0.40f, 0.75f, 1f, 0.9f);
+        static readonly Color kSelBoneColor = new Color(1f, 0.78f, 0.20f, 1f);
 
         [MenuItem("Window/Animation/Pose Tools")]
         public static void Open()
@@ -50,6 +48,12 @@ namespace GabeGin.PoseTools
         void OnEnable()
         {
             _settings = PoseToolsSettings.Load();
+            SceneView.duringSceneGui += OnSceneGUI;
+        }
+
+        void OnDisable()
+        {
+            SceneView.duringSceneGui -= OnSceneGUI;
         }
 
         // Keep the record-state / selection readout live even when the mouse is
@@ -83,7 +87,7 @@ namespace GabeGin.PoseTools
 
             DrawStatusSection(target, boneCount, inAnimMode);
             EditorGUILayout.Space();
-            DrawBoneTreeSection(target);
+            DrawOverlaySection(boneCount);
             EditorGUILayout.Space();
             DrawSuffixSection();
             EditorGUILayout.Space();
@@ -145,6 +149,13 @@ namespace GabeGin.PoseTools
                 EditorGUILayout.LabelField("Bones detected", boneCount.ToString());
                 if (boneCount == 0)
                     EditorGUILayout.HelpBox("No bones found under this rig (no SkinnedMeshRenderer bones and no child Transforms).", MessageType.Warning);
+
+                var anim = target.GetComponentInParent<Animator>();
+                if (anim == null) anim = target.GetComponentInChildren<Animator>(true);
+                if (anim != null && anim.isHuman)
+                    EditorGUILayout.HelpBox(
+                        "This rig uses a Humanoid Avatar. Unity's Animation window keys Humanoid MUSCLE values, not raw bone transforms — but Copy/Paste read and write raw transforms, so a paste won't key into a Humanoid clip and the pose won't stick. Set the model's Rig to Generic (Inspector ▸ Rig ▸ Animation Type) to use Copy/Paste.",
+                        MessageType.Warning);
             }
 
             if (inAnimMode)
@@ -153,138 +164,112 @@ namespace GabeGin.PoseTools
                 EditorGUILayout.HelpBox("Animation record is OFF. Enable Record in the Animation window first — paste is disabled until then.", MessageType.Warning);
         }
 
-        // ------------------------------------------------ bone hierarchy browser
+        // ------------------------------------------------ skeleton overlay
 
-        void DrawBoneTreeSection(GameObject target)
+        void DrawOverlaySection(int boneCount)
         {
-            EditorGUILayout.LabelField("Bone Hierarchy", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Skeleton Overlay", EditorStyles.boldLabel);
 
-            if (target == null)
+            EditorGUI.BeginChangeCheck();
+            _settings.showSkeletonOverlay = EditorGUILayout.ToggleLeft(
+                new GUIContent("Show skeleton in Scene view",
+                    "Draw the rig's bones as a clickable overlay in the Scene view. Click a bone there to select it — the rig above stays the edit target."),
+                _settings.showSkeletonOverlay);
+            if (EditorGUI.EndChangeCheck())
             {
-                EditorGUILayout.HelpBox("Select a rig to browse and pick its bones here.", MessageType.None);
-                return;
+                SaveSettings();
+                SceneView.RepaintAll();
             }
 
-            var root = target.transform;
-            EnsureBoneStyles();
-
-            // Toolbar: search + expand / collapse all.
-            EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("Search", GUILayout.Width(46f));
-            _boneSearch = EditorGUILayout.TextField(_boneSearch);
-            if (GUILayout.Button(new GUIContent("+", "Expand all"), EditorStyles.miniButtonLeft, GUILayout.Width(24f)))
-                _collapsed.Clear();
-            if (GUILayout.Button(new GUIContent("−", "Collapse all"), EditorStyles.miniButtonRight, GUILayout.Width(24f)))
-                CollapseAll(root);
-            EditorGUILayout.EndHorizontal();
-
-            _boneTreeScroll = EditorGUILayout.BeginScrollView(_boneTreeScroll, GUILayout.MinHeight(120f), GUILayout.MaxHeight(260f));
-
-            if (string.IsNullOrEmpty(_boneSearch))
-                DrawBoneNode(root, 0);
-            else
-                DrawFilteredBones(root, _boneSearch);
-
-            EditorGUILayout.EndScrollView();
-
-            EditorGUILayout.LabelField("Click a bone to select it — the rig above stays the edit target.", EditorStyles.miniLabel);
+            if (_settings.showSkeletonOverlay)
+                EditorGUILayout.LabelField(
+                    boneCount > 0
+                        ? "Click a bone in the Scene view to select it."
+                        : "Select a rig to see its skeleton in the Scene view.",
+                    EditorStyles.miniLabel);
         }
 
-        void DrawBoneNode(Transform t, int depth)
+        // Draw the rig's skeleton in the Scene view: an octahedral shape per bone
+        // (Blender-style) plus a clickable joint handle that selects the bone
+        // without disturbing the locked rig root.
+        void OnSceneGUI(SceneView sceneView)
         {
-            if (t == null) return;
+            if (_settings == null) _settings = PoseToolsSettings.Load();
+            if (!_settings.showSkeletonOverlay) return;
 
-            int childCount = t.childCount;
-            bool hasChildren = childCount > 0;
-            int id = t.GetInstanceID();
-            bool expanded = !_collapsed.Contains(id);
-            bool showChildren = false;
+            SyncRigRoot();
+            if (_rigRoot == null) return;
 
-            EditorGUILayout.BeginHorizontal();
-            GUILayout.Space(depth * 14f);
+            var bones = PoseSkeleton.GetBones(_rigRoot.gameObject);
+            if (bones.Count == 0) return;
 
-            if (hasChildren)
+            var boneSet = new HashSet<Transform>(bones);
+            var active = Selection.activeTransform;
+            var prevZTest = Handles.zTest;
+
+            // Bone shapes respect depth so they sit on the mesh.
+            Handles.zTest = UnityEngine.Rendering.CompareFunction.LessEqual;
+            for (int i = 0; i < bones.Count; i++)
             {
-                Rect fr = GUILayoutUtility.GetRect(12f, EditorGUIUtility.singleLineHeight, GUILayout.Width(12f));
-                bool now = EditorGUI.Foldout(fr, expanded, GUIContent.none);
-                if (now != expanded)
+                var b = bones[i];
+                if (b == null) continue;
+                var parentBone = NearestBoneAncestor(b, boneSet);
+                if (parentBone == null) continue;
+                bool hot = b == active || parentBone == active;
+                DrawOctahedronBone(parentBone.position, b.position, hot ? kSelBoneColor : kBoneColor);
+            }
+
+            // Joint handles draw on top so they're always easy to click.
+            Handles.zTest = UnityEngine.Rendering.CompareFunction.Always;
+            for (int i = 0; i < bones.Count; i++)
+            {
+                var b = bones[i];
+                if (b == null) continue;
+                Handles.color = b == active ? kSelBoneColor : kBoneColor;
+                float size = HandleUtility.GetHandleSize(b.position) * 0.05f;
+                if (Handles.Button(b.position, Quaternion.identity, size, size * 1.7f, Handles.SphereHandleCap))
                 {
-                    if (now) _collapsed.Remove(id);
-                    else _collapsed.Add(id);
+                    Selection.activeTransform = b;
+                    Repaint();
                 }
-                showChildren = now;
-            }
-            else
-            {
-                GUILayout.Space(12f);
             }
 
-            DrawBoneLabel(t);
-            EditorGUILayout.EndHorizontal();
-
-            if (showChildren)
-                for (int i = 0; i < childCount; i++)
-                    DrawBoneNode(t.GetChild(i), depth + 1);
+            Handles.zTest = prevZTest;
         }
 
-        void DrawFilteredBones(Transform root, string filter)
+        // Nearest ancestor of b that is also a bone in the rig (skips non-bone
+        // transforms between skinned bones so the shape connects bone-to-bone).
+        static Transform NearestBoneAncestor(Transform b, HashSet<Transform> boneSet)
         {
-            int shown = 0;
-            string needle = filter.ToLowerInvariant();
-            DrawFilteredRecursive(root, needle, ref shown);
-            if (shown == 0)
-                EditorGUILayout.LabelField("No bones match \"" + filter + "\".", EditorStyles.miniLabel);
+            for (var p = b.parent; p != null; p = p.parent)
+                if (boneSet.Contains(p)) return p;
+            return null;
         }
 
-        void DrawFilteredRecursive(Transform t, string needle, ref int shown)
+        // Classic Blender octahedral bone from head to tail: four short edges out
+        // to a ring near the head, the ring loop, then four edges in to the tail.
+        static void DrawOctahedronBone(Vector3 head, Vector3 tail, Color color)
         {
-            if (t == null) return;
-            if (t.name.ToLowerInvariant().Contains(needle))
-            {
-                EditorGUILayout.BeginHorizontal();
-                DrawBoneLabel(t);
-                EditorGUILayout.EndHorizontal();
-                shown++;
-            }
-            for (int i = 0; i < t.childCount; i++)
-                DrawFilteredRecursive(t.GetChild(i), needle, ref shown);
-        }
+            Vector3 dir = tail - head;
+            float len = dir.magnitude;
+            if (len < 1e-5f) return;
 
-        // A clickable bone row. Selecting it pings the bone in the Scene/Hierarchy
-        // but leaves the locked rig root untouched (see SyncRigRoot).
-        void DrawBoneLabel(Transform t)
-        {
-            bool isSelected = Selection.activeTransform == t;
-            var style = isSelected ? _selectedBoneStyle : EditorStyles.label;
-            if (GUILayout.Button(new GUIContent(t.name), style, GUILayout.ExpandWidth(true)))
-            {
-                Selection.activeTransform = t;
-                EditorGUIUtility.PingObject(t);
-            }
-        }
+            Vector3 fwd = dir / len;
+            Vector3 refUp = Mathf.Abs(Vector3.Dot(fwd, Vector3.up)) > 0.99f ? Vector3.right : Vector3.up;
+            Vector3 side = Vector3.Normalize(Vector3.Cross(fwd, refUp));
+            Vector3 up = Vector3.Cross(side, fwd);
 
-        void CollapseAll(Transform root)
-        {
-            _collapsed.Clear();
-            CollapseRecursive(root, true);
-        }
+            float w = len * 0.1f;
+            Vector3 ring = head + fwd * (len * 0.1f);
+            Vector3 a = ring + side * w;
+            Vector3 c = ring - side * w;
+            Vector3 u = ring + up * w;
+            Vector3 d = ring - up * w;
 
-        void CollapseRecursive(Transform t, bool isRoot)
-        {
-            if (t == null) return;
-            if (!isRoot && t.childCount > 0) _collapsed.Add(t.GetInstanceID());
-            for (int i = 0; i < t.childCount; i++)
-                CollapseRecursive(t.GetChild(i), false);
-        }
-
-        void EnsureBoneStyles()
-        {
-            if (_selectedBoneStyle != null) return;
-            _selectedBoneStyle = new GUIStyle(EditorStyles.label);
-            _selectedBoneStyle.fontStyle = FontStyle.Bold;
-            var hi = new Color(0.42f, 0.72f, 1f);
-            _selectedBoneStyle.normal.textColor = hi;
-            _selectedBoneStyle.hover.textColor = hi;
+            Handles.color = color;
+            Handles.DrawLine(head, a); Handles.DrawLine(head, u); Handles.DrawLine(head, c); Handles.DrawLine(head, d);
+            Handles.DrawLine(a, u); Handles.DrawLine(u, c); Handles.DrawLine(c, d); Handles.DrawLine(d, a);
+            Handles.DrawLine(a, tail); Handles.DrawLine(u, tail); Handles.DrawLine(c, tail); Handles.DrawLine(d, tail);
         }
 
         // ------------------------------------------------ suffix convention
@@ -503,8 +488,19 @@ namespace GabeGin.PoseTools
             if (bones.Count == 0) { Debug.LogWarning("[Pose Tools] Copy failed: no bones under '" + go.name + "'."); return; }
 
             PoseBuffer.Capture(go.transform, bones);
-            Debug.Log("[Pose Tools] Copied pose: " + bones.Count + " bones from '" + go.name + "'.");
+            // Log the actual bones so a wrong bone set is obvious in the console.
+            Debug.Log("[Pose Tools] Copied " + bones.Count + " bones from '" + go.name + "': " + SampleNames(bones));
             RepaintOpen();
+        }
+
+        static string SampleNames(List<Transform> bones)
+        {
+            int n = Mathf.Min(bones.Count, 8);
+            string s = "";
+            for (int i = 0; i < n; i++)
+                s += (i > 0 ? ", " : "") + (bones[i] != null ? bones[i].name : "null");
+            if (bones.Count > n) s += ", … (+" + (bones.Count - n) + " more)";
+            return s;
         }
 
         public static void PastePose(GameObject target)

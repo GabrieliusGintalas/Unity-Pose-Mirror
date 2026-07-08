@@ -19,9 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   orientation with no per-component sign tuning — matching Blender's Paste
   X-Flipped. Optionally scoped to just the bones selected in the Hierarchy (a
   center bone flips onto itself).
-- **Bone Hierarchy browser** — the full skeleton tree in the window: expand /
-  collapse, search-filter, and click to select a bone without using the
-  Hierarchy. Selecting a child bone keeps the parent rig as the edit target.
+- **Scene-view skeleton overlay** — draws the rig's bones as clickable octahedral
+  gizmos in the Scene view (Blender-style); click a bone in the viewport to select
+  it. Selecting a child bone keeps the parent rig as the edit target.
 - **Generic skeleton discovery** — uses `SkinnedMeshRenderer.bones` when present,
   otherwise every descendant Transform. No assumptions about names, root, rig
   type, or bone count. Humanoid not required.

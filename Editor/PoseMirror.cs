@@ -259,6 +259,9 @@ namespace GabeGin.PoseTools
         // (or nothing) falls back to flipping the whole rig.
         public bool flipSelectedOnly = true;
 
+        // Draw the rig's skeleton as a clickable overlay in the Scene view.
+        public bool showSkeletonOverlay = true;
+
         // EditorPrefs is per-user/per-machine; scope the key to this project so
         // conventions don't bleed between projects on the same machine.
         static string Key { get { return "GabeGin.PoseTools.Settings." + ProjectId(); } }

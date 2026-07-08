@@ -14,9 +14,10 @@ naming convention, exactly like Blender.
 - **Blender-accurate mirroring.** Pick the left/right suffix convention; the flip
   is computed in the rig's own space, so it's correct for any bone orientation
   with no per-component sign tuning — just like Blender's Paste X-Flipped.
-- **Bone browser + selective flip.** Browse the whole skeleton in the window and
-  pick bones without hunting the Hierarchy. Flip the whole rig, or just the bones
-  you've selected (plus, optionally, one side onto the other).
+- **Scene-view skeleton overlay + selective flip.** See the whole skeleton drawn
+  on the rig in the Scene view (Blender-style bones) and click a bone to select it
+  without hunting the Hierarchy. Flip the whole rig, or just the bones you've
+  selected.
 - **Rebindable hotkeys** so you can keep focus on the Animation window.
 
 ## Compatibility
@@ -93,10 +94,10 @@ keeps the *parent rig* as the edit target, so Copy/Paste always act on the whole
 skeleton — not just the child you clicked. Drag a different root into the **Rig**
 field to change it.
 
-**Bone Hierarchy** — the full bone tree, right in the window. Expand/collapse
-nodes, type in the search box to filter, and click any bone to select it in the
-Scene/Hierarchy without leaving Pose Tools. Selecting a bone here never changes
-the locked rig above.
+**Skeleton Overlay** — draws the rig's bones directly in the **Scene view** as
+clickable octahedral gizmos (like Blender's armature). Click a bone in the
+viewport to select it — no Hierarchy hunting — and selecting one never changes
+the locked rig above. Toggle it with **Show skeleton in Scene view**.
 
 **Naming Convention** — how left/right bones are labelled:
 
