@@ -122,46 +122,47 @@ namespace GabeGin.PoseTools
     [Serializable]
     public class MirrorSettings
     {
+        // Which of the rig's OWN local axes is its left/right (symmetry) axis.
+        // The pose is reflected across the plane perpendicular to it. X is the
+        // Blender convention and correct for virtually all character rigs.
         public MirrorAxis axis = MirrorAxis.X;
 
-        // Component sign multipliers (+1 keep, -1 negate). Tunable per rig.
-        public Vector3 positionSign = new Vector3(-1f, 1f, 1f);
-        public Vector4 rotationSign = new Vector4(1f, -1f, -1f, 1f); // x, y, z, w
-
-        /// <summary>Reset both sign vectors to the derived defaults for the current axis.</summary>
-        public void ApplyAxisDefaults()
+        /// <summary>
+        /// Reflect a ROOT-SPACE position across the symmetry plane: negate the
+        /// component on the symmetry axis, keep the others.
+        /// </summary>
+        public Vector3 MirrorRootPosition(Vector3 p)
         {
             switch (axis)
             {
-                case MirrorAxis.X:
-                    positionSign = new Vector3(-1f, 1f, 1f);
-                    rotationSign = new Vector4(1f, -1f, -1f, 1f);
-                    break;
-                case MirrorAxis.Y:
-                    positionSign = new Vector3(1f, -1f, 1f);
-                    rotationSign = new Vector4(-1f, 1f, -1f, 1f);
-                    break;
-                case MirrorAxis.Z:
-                    positionSign = new Vector3(1f, 1f, -1f);
-                    rotationSign = new Vector4(-1f, -1f, 1f, 1f);
-                    break;
+                case MirrorAxis.X: return new Vector3(-p.x, p.y, p.z);
+                case MirrorAxis.Y: return new Vector3(p.x, -p.y, p.z);
+                default:           return new Vector3(p.x, p.y, -p.z);
             }
         }
 
-        public Vector3 MirrorPosition(Vector3 p)
+        /// <summary>
+        /// Reflect a ROOT-SPACE rotation across the symmetry plane.
+        ///
+        /// Reflecting an orientation is the reflection matrix M conjugating the
+        /// rotation (M·R·M), which is a *proper* rotation (det +1) even though M
+        /// itself is improper. In quaternion terms that keeps w and the component
+        /// on the symmetry axis and negates the other two vector components — the
+        /// same reflection Blender applies to a bone's pose. Doing this in root
+        /// space (rather than each bone's parent-local space) is what makes the
+        /// flip correct regardless of how the bone's local axes are oriented.
+        /// </summary>
+        public Quaternion MirrorRootRotation(Quaternion q)
         {
-            return new Vector3(p.x * positionSign.x, p.y * positionSign.y, p.z * positionSign.z);
-        }
-
-        public Quaternion MirrorRotation(Quaternion q)
-        {
-            var r = new Quaternion(
-                q.x * rotationSign.x,
-                q.y * rotationSign.y,
-                q.z * rotationSign.z,
-                q.w * rotationSign.w);
-            // Component sign flips preserve unit length; normalize defensively
-            // against accumulated float error before handing back a rotation.
+            Quaternion r;
+            switch (axis)
+            {
+                case MirrorAxis.X: r = new Quaternion( q.x, -q.y, -q.z, q.w); break;
+                case MirrorAxis.Y: r = new Quaternion(-q.x,  q.y, -q.z, q.w); break;
+                default:           r = new Quaternion(-q.x, -q.y,  q.z, q.w); break;
+            }
+            // Component flips preserve unit length; normalize defensively against
+            // accumulated float error before handing back a rotation.
             return Normalize(r);
         }
 
@@ -252,7 +253,11 @@ namespace GabeGin.PoseTools
         public SuffixConvention suffix = new SuffixConvention();
         public MirrorSettings mirror = new MirrorSettings();
         public int presetIndex = 0;          // index into PoseToolsWindow presets
-        public bool showAdvancedMirror = false;
+
+        // When true, Paste Flipped acts only on the bones currently selected in
+        // the Hierarchy plus each one's mirror partner. Selecting just the rig
+        // (or nothing) falls back to flipping the whole rig.
+        public bool flipSelectedOnly = true;
 
         // EditorPrefs is per-user/per-machine; scope the key to this project so
         // conventions don't bleed between projects on the same machine.

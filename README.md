@@ -3,7 +3,7 @@
 Blender-style **Copy Pose**, **Paste Pose**, and **Paste Pose Flipped** for Unity's
 Animation window. Pose and animate any skeletal rig — biped, quadruped, or
 non-character prop — and mirror poses left↔right with a fully configurable
-naming convention and a tunable mirror axis.
+naming convention, exactly like Blender.
 
 - **Generic-first.** Works on raw Transform hierarchies. No Humanoid muscle rig
   required, no hard-coded bone names, root names, or bone counts.
@@ -11,8 +11,12 @@ naming convention and a tunable mirror axis.
   paste is written as keyframes on the current frame via the supported
   `AnimationMode` + `Undo.RecordObject` path — no reflection into internal Unity
   APIs, so it stays stable across versions.
-- **Configurable mirroring.** Pick the left/right suffix convention and the
-  mirror axis; fine-tune the per-component signs when a rig needs it.
+- **Blender-accurate mirroring.** Pick the left/right suffix convention; the flip
+  is computed in the rig's own space, so it's correct for any bone orientation
+  with no per-component sign tuning — just like Blender's Paste X-Flipped.
+- **Bone browser + selective flip.** Browse the whole skeleton in the window and
+  pick bones without hunting the Hierarchy. Flip the whole rig, or just the bones
+  you've selected (plus, optionally, one side onto the other).
 - **Rebindable hotkeys** so you can keep focus on the Animation window.
 
 ## Compatibility
@@ -82,8 +86,17 @@ in a player build regardless of how you import them.)
 
 ## The window
 
-**Target & Record State** — the GameObject being edited, how many bones were
-detected, and whether animation recording is active.
+**Target & Record State** — the **Rig** being edited, how many bones were
+detected, and whether animation recording is active. The rig auto-locks when you
+select one; selecting one of its child bones (in the window or the Hierarchy)
+keeps the *parent rig* as the edit target, so Copy/Paste always act on the whole
+skeleton — not just the child you clicked. Drag a different root into the **Rig**
+field to change it.
+
+**Bone Hierarchy** — the full bone tree, right in the window. Expand/collapse
+nodes, type in the search box to filter, and click any bone to select it in the
+Scene/Hierarchy without leaving Pose Tools. Selecting a bone here never changes
+the locked rig above.
 
 **Naming Convention** — how left/right bones are labelled:
 
@@ -103,13 +116,18 @@ detected, and whether animation recording is active.
 suffixed bone with no partner (e.g. an `Arm_L` with no `Arm_R`), so you can
 confirm the convention *before* pasting.
 
-**Mirror** — the **Mirror axis** dropdown (X/Y/Z, default **X**) chooses the
-plane the pose is reflected across and seeds sensible component signs. The
-**Advanced** foldout exposes the exact per-component negations for position and
-rotation, for rigs whose bone orientations need different signs.
+**Mirror** — the **Symmetry axis** dropdown (X/Y/Z, default **X**) picks the
+rig's left/right axis *in the rig's own local space*. Paste Flipped reflects the
+pose across the plane perpendicular to it, computed in the rig's space — exactly
+like Blender's Paste X-Flipped. Because the mirror isn't done in each bone's
+parent-local space, it's correct regardless of how the bones are oriented, so
+there are **no per-component signs to tune**. **X** is right for virtually all
+character rigs.
 
 **Actions** — **Copy Pose**, **Paste Pose**, **Paste Pose Flipped**, plus a
-buffer readout and **Clear**.
+buffer readout and **Clear**. The **Paste Flipped: selected bones only** toggle
+limits a flip to the bones you've selected in the Hierarchy (a center bone flips
+onto itself); with nothing specific selected it flips the whole rig.
 
 The pose buffer persists across selection changes and script recompiles /
 play-mode toggles; it clears on a full editor restart.
@@ -131,38 +149,32 @@ Rebind them in **Edit ▸ Shortcuts…** — search **"Pose Tools"**.
 
 ---
 
-## Testing the flip & adjusting when results look off
+## If the flip looks off
 
-Mirroring a *local* rotation across a plane is a reflection, and the correct
-per-component signs depend on how each bone's local axes are oriented — which
-varies from rig to rig. The defaults (mirror across **X**: negate position X,
-negate rotation Y and Z) are correct for a rig whose left/right bones are true
-mirror images with matching rest orientations. If your flip looks wrong, walk
-this checklist:
+The mirror math is Blender-accurate and needs no tuning, so a bad flip almost
+always comes down to the naming convention or what's selected:
 
-1. **Confirm the suffix convention first.** Click **Validate / Preview Pairs**.
-   Every limb you expect to swap should appear as a `✔ L ↔ R` pair. If pairs are
+1. **Confirm the suffix convention.** Click **Validate / Preview Pairs**. Every
+   limb you expect to swap should appear as a `✔ L ↔ R` pair. If pairs are
    missing or land in **Unmatched**, fix the preset / suffix / case / prefix
    toggle until the pairing is right. A wrong convention looks like "the flip
    did nothing" or "only some limbs flipped".
 
-2. **Check the mirror axis.** Most characters are symmetric across **X** (the
-   left/right axis). If yours faces a different way, try **Y** or **Z**. Wrong
-   axis usually looks like the pose mirroring *up/down* or *front/back* instead
-   of *left/right*.
+2. **Copy the whole rig, not one bone.** Paste Flipped reads each bone's mirror
+   partner from the buffer, so the buffer must contain *both* sides. The window
+   copies the whole locked rig for you; if you copy with only a single child bone
+   selected (via the hotkey, no window open), you capture just that sub-tree and
+   the partners are missing. The console logs how many bones had no partner.
 
-3. **Tune the rotation signs.** If limbs end up in roughly the right place but
-   twisted or bent the wrong way, open **Mirror ▸ Advanced** and flip a
-   *different pair* of the rotation **X/Y/Z/W** toggles. Change one pair at a
-   time and re-test on an obvious asymmetric pose (e.g. one arm up, one arm
-   forward) so the mirror is easy to read. Position signs rarely need changing
-   beyond the axis default.
+3. **Check the symmetry axis.** Most characters are symmetric across **X** (the
+   left/right axis). If yours was authored facing a different way, try **Y** or
+   **Z**. A wrong axis looks like the pose mirroring *up/down* or *front/back*
+   instead of *left/right*.
 
-4. **Re-test with Undo.** Every paste is a single Undo step, so you can
-   `Ctrl/Cmd+Z`, adjust a sign, and paste again quickly while iterating.
+4. **Re-test with Undo.** Every paste is a single Undo step, so `Ctrl/Cmd+Z` and
+   try again freely.
 
-Once a rig's convention + axis + signs look right, they're saved per project, so
-you only tune once.
+The convention + axis are saved per project, so you only set them once.
 
 ---
 

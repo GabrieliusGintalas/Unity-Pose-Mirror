@@ -15,9 +15,15 @@ namespace GabeGin.PoseTools
     {
         public string name;             // Transform.name at capture time
         public string path;             // path relative to the capture root, e.g. "Hips/Spine"
-        public Vector3 localPosition;
+        public Vector3 localPosition;   // relative to parent — used by straight Paste
         public Quaternion localRotation;
         public Vector3 localScale;
+
+        // Transform relative to the RIG ROOT (not the parent). Paste Flipped
+        // mirrors in this space so the reflection is correct no matter how each
+        // bone's own local axes are oriented — this is what Blender does.
+        public Vector3 rootPosition;
+        public Quaternion rootRotation;
 
         /// <summary>A key that is unique across the buffer (path if we have one, else name).</summary>
         public string Key
@@ -43,7 +49,11 @@ namespace GabeGin.PoseTools
     /// </summary>
     public static class PoseBuffer
     {
-        const string kSessionKey = "GabeGin.PoseTools.Buffer.v1";
+        // v2 adds root-relative transforms to each BonePose. Bumping the key
+        // discards any v1 buffer left in SessionState after an upgrade, so a
+        // stale copy can't be flipped with missing root data — the user just
+        // re-copies.
+        const string kSessionKey = "GabeGin.PoseTools.Buffer.v2";
 
         static PoseData s_data;
 
@@ -112,6 +122,8 @@ namespace GabeGin.PoseTools
                 entry.localPosition = t.localPosition;
                 entry.localRotation = t.localRotation;
                 entry.localScale = t.localScale;
+                entry.rootPosition = root.InverseTransformPoint(t.position);
+                entry.rootRotation = Quaternion.Inverse(root.rotation) * t.rotation;
                 data.bones.Add(entry);
             }
             s_data = data;

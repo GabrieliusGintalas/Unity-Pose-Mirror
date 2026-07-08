@@ -14,7 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Paste Pose** — reapplies the copied local TRS by bone name, wrapped in a
   single Undo group.
 - **Paste Pose Flipped** — applies the copied pose mirrored left↔right using the
-  configured naming convention and a tunable mirror axis.
+  configured naming convention. The reflection is computed in the rig's own
+  space (not each bone's parent-local space), so it's correct for any bone
+  orientation with no per-component sign tuning — matching Blender's Paste
+  X-Flipped. Optionally scoped to just the bones selected in the Hierarchy (a
+  center bone flips onto itself).
+- **Bone Hierarchy browser** — the full skeleton tree in the window: expand /
+  collapse, search-filter, and click to select a bone without using the
+  Hierarchy. Selecting a child bone keeps the parent rig as the edit target.
 - **Generic skeleton discovery** — uses `SkinnedMeshRenderer.bones` when present,
   otherwise every descendant Transform. No assumptions about names, root, rig
   type, or bone count. Humanoid not required.
@@ -24,8 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   project.
 - **Validate / Preview Pairs** — lists detected L↔R pairs and flags unmatched
   suffixed bones before pasting.
-- **Configurable mirror** — X/Y/Z axis dropdown (default X) with per-component
-  position and rotation sign overrides for per-rig tuning.
+- **Symmetry-axis selector** — X/Y/Z dropdown (default X) picking the rig's
+  left/right axis for the mirror plane.
 - **Animation window integration** — requires `AnimationMode` (Record) to be
   active and records keyframes on the current frame via `Undo.RecordObject`; no
   reflection into internal Animation window APIs. Live record-state / target
