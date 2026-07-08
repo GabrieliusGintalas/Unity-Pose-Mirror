@@ -37,6 +37,12 @@ namespace GabeGin.PoseTools
         static readonly Color kBoneColor = new Color(0.40f, 0.75f, 1f, 0.9f);
         static readonly Color kSelBoneColor = new Color(0.55f, 1f, 0.55f, 1f);       // selected: light green edges
         static readonly Color kSelBoneFill = new Color(0.55f, 1f, 0.55f, 0.4f);      // selected: light green fill
+        static readonly Color kFlashColor = new Color(1f, 0.25f, 0.25f, 1f);         // just-flipped: red
+
+        // Bones that were just flipped, flashed red in the overlay for a moment.
+        static readonly HashSet<Transform> s_flashBones = new HashSet<Transform>();
+        static double s_flashStart;
+        const double kFlashDuration = 0.6;
 
         [MenuItem("Window/Animation/Pose Tools")]
         public static void Open()
@@ -219,6 +225,13 @@ namespace GabeGin.PoseTools
             // out a selected bone whose parent is also selected, which left
             // shift-selected child bones un-highlighted.
             var selected = new HashSet<GameObject>(Selection.gameObjects);
+
+            // Red flash fades out over kFlashDuration right after a flip.
+            double now = EditorApplication.timeSinceStartup;
+            bool flashing = s_flashBones.Count > 0 && (now - s_flashStart) < kFlashDuration;
+            if (!flashing) s_flashBones.Clear();
+            float flashA = flashing ? 1f - (float)((now - s_flashStart) / kFlashDuration) : 0f;
+
             var prevZTest = Handles.zTest;
 
             // "On top" renders the whole skeleton in front of the mesh (x-ray);
@@ -237,16 +250,18 @@ namespace GabeGin.PoseTools
                 if (b == null) continue;
                 var parentBone = NearestBoneAncestor(b, boneSet);
                 if (parentBone == null) continue;
-                bool isSel = selected.Contains(parentBone.gameObject);
-                DrawOctahedronBone(parentBone.position, b.position,
-                    isSel ? kSelBoneColor : kBoneColor, isSel, kSelBoneFill);
+                Color edge; bool fill; Color fillCol;
+                ResolveBoneStyle(parentBone, selected, flashing, flashA, out edge, out fill, out fillCol);
+                DrawOctahedronBone(parentBone.position, b.position, edge, fill, fillCol);
             }
 
             for (int i = 0; i < bones.Count; i++)
             {
                 var b = bones[i];
                 if (b == null) continue;
-                Handles.color = selected.Contains(b.gameObject) ? kSelBoneColor : kBoneColor;
+                Color hEdge; bool hFill; Color hFillCol;
+                ResolveBoneStyle(b, selected, flashing, flashA, out hEdge, out hFill, out hFillCol);
+                Handles.color = hEdge;
                 float size = HandleUtility.GetHandleSize(b.position) * 0.05f;
                 if (Handles.Button(b.position, Quaternion.identity, size, size * 1.7f, Handles.SphereHandleCap))
                 {
@@ -269,6 +284,27 @@ namespace GabeGin.PoseTools
             }
 
             Handles.zTest = prevZTest;
+
+            // Keep animating the fade while a flash is active.
+            if (flashing) sceneView.Repaint();
+        }
+
+        // Decide a bone's overlay colors: red while flashing (just flipped), else
+        // solid green when selected, else the plain wire color.
+        static void ResolveBoneStyle(Transform bone, HashSet<GameObject> selected, bool flashing, float flashA,
+            out Color edge, out bool fill, out Color fillCol)
+        {
+            if (flashing && bone != null && s_flashBones.Contains(bone))
+            {
+                edge = new Color(kFlashColor.r, kFlashColor.g, kFlashColor.b, Mathf.Max(0.25f, flashA));
+                fill = true;
+                fillCol = new Color(kFlashColor.r, kFlashColor.g, kFlashColor.b, flashA * 0.5f);
+                return;
+            }
+            bool isSel = bone != null && selected.Contains(bone.gameObject);
+            edge = isSel ? kSelBoneColor : kBoneColor;
+            fill = isSel;
+            fillCol = kSelBoneFill;
         }
 
         // Small on-screen panel in the Scene view (top-left) to toggle the
@@ -458,7 +494,7 @@ namespace GabeGin.PoseTools
             EditorGUI.BeginChangeCheck();
             _settings.flipSelectedOnly = EditorGUILayout.ToggleLeft(
                 new GUIContent("Paste Flipped: selected bones only",
-                    "On: Paste Flipped only writes to the bones you've selected in the Hierarchy. Each receives its mirror partner's copied pose; a center bone flips onto itself. Non-selected bones (including a selected bone's partner) are left alone. Select just the rig — or nothing — to flip the whole rig."),
+                    "On: Paste Flipped writes the mirrored pose onto the PARTNER of each bone you select in the Hierarchy — select the left arm to flip the pose onto the right. A center bone flips onto itself. Flipped bones flash red. Select just the rig — or nothing — to flip the whole rig."),
                 _settings.flipSelectedOnly);
             if (EditorGUI.EndChangeCheck())
                 SaveSettings();
@@ -468,7 +504,7 @@ namespace GabeGin.PoseTools
                 int sel = CountSelectedInRig(rigBones, go != null ? go.transform : null);
                 EditorGUILayout.LabelField(
                     sel > 0
-                        ? "Paste Flipped → " + sel + " selected bone(s)."
+                        ? "Paste Flipped → onto the partners of " + sel + " selected bone(s)."
                         : "Paste Flipped → whole rig (no specific bones selected).",
                     EditorStyles.miniLabel);
             }
@@ -615,7 +651,7 @@ namespace GabeGin.PoseTools
             bool scoped = false;
             if (settings.flipSelectedOnly)
             {
-                var sub = CollectSelectedRigBones(bones, root);
+                var sub = CollectFlipTargets(bones, root, settings.suffix);
                 if (sub.Count > 0) { writeSet = sub; scoped = true; }
                 // else: nothing specific selected — fall through to the whole rig
             }
@@ -629,13 +665,14 @@ namespace GabeGin.PoseTools
             int group = BeginGroup("Paste Pose Flipped");
 
             var used = new HashSet<string>();
+            var flashed = new List<Transform>();
             int applied = 0, noPartner = 0;
             foreach (var b in writeSet)
             {
-                // The data applied to bone B is its MIRROR PARTNER's stored pose,
-                // reflected across the symmetry plane. Right bones read left data
-                // (and vice-versa); a CENTER bone is its own partner, so it reads
-                // its own data and mirrors onto itself.
+                // Bone B receives its MIRROR PARTNER's stored pose, reflected
+                // across the symmetry plane. In "selected only" mode B is the
+                // partner of a selected bone (the other, non-selected side); a
+                // CENTER bone is its own partner and flips onto itself.
                 string partnerName = settings.suffix.GetPartnerName(b.name);
                 string pathHint = SwapLastSegment(PoseSkeleton.GetRelativePath(b, root), partnerName);
 
@@ -659,22 +696,39 @@ namespace GabeGin.PoseTools
 
                 applied++;
                 used.Add(pose.Key);
+                flashed.Add(b);
             }
 
             EndGroup(group);
+            SetFlash(flashed);
             LogFlipped(applied, noPartner, scoped);
             RepaintOpen();
         }
 
-        // The bones a scoped flip writes to: exactly the rig bones selected in the
-        // Hierarchy. The rig root is ignored, so selecting only the root (or
-        // nothing) reads as "flip the whole rig" back in PasteFlipped. Each of
-        // these bones pulls its mirror partner's pose from the buffer; a CENTER
-        // bone is its own partner, so it flips onto itself. Non-selected bones —
-        // including a selected bone's partner — are never written.
-        static List<Transform> CollectSelectedRigBones(List<Transform> rigBones, Transform root)
+        // Flash the given bones red in the Scene-view overlay for a moment, to
+        // show which bones were just flipped.
+        static void SetFlash(List<Transform> bones)
+        {
+            s_flashBones.Clear();
+            for (int i = 0; i < bones.Count; i++)
+                if (bones[i] != null) s_flashBones.Add(bones[i]);
+            s_flashStart = EditorApplication.timeSinceStartup;
+            SceneView.RepaintAll();
+        }
+
+        // The bones a scoped flip WRITES to: the mirror PARTNER of each rig bone
+        // selected in the Hierarchy — i.e. the other, non-selected side. Selecting
+        // Arm_L returns Arm_R so the flipped pose lands there. A CENTER bone is its
+        // own partner, so it flips onto itself. The rig root, and bones whose
+        // partner isn't present in the rig, are skipped; selecting only the root
+        // (or nothing) reads as "flip the whole rig" back in PasteFlipped.
+        static List<Transform> CollectFlipTargets(List<Transform> rigBones, Transform root, SuffixConvention suffix)
         {
             var rigSet = new HashSet<Transform>(rigBones);
+            var byName = new Dictionary<string, Transform>();
+            foreach (var t in rigBones)
+                if (t != null && !byName.ContainsKey(t.name)) byName[t.name] = t;
+
             var result = new List<Transform>();
             var added = new HashSet<Transform>();
 
@@ -684,7 +738,15 @@ namespace GabeGin.PoseTools
             {
                 var s = sel[i] != null ? sel[i].transform : null;
                 if (s == null || s == root || !rigSet.Contains(s)) continue;
-                if (added.Add(s)) result.Add(s);
+
+                string partnerName = suffix.GetPartnerName(s.name);
+                Transform target;
+                if (partnerName == s.name)
+                    target = s;                                   // center bone -> itself
+                else if (!byName.TryGetValue(partnerName, out target))
+                    continue;                                     // no partner bone in this rig
+
+                if (target != null && added.Add(target)) result.Add(target);
             }
             return result;
         }

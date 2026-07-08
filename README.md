@@ -45,7 +45,7 @@ To pin a version, append a tag: `…/pose-tools.git#v1.0.0`.
 
 Clone (or copy) the repo into your project's `Packages/` folder:
 
-```
+```javascript
 <YourProject>/Packages/com.gabegin.posetools/
     package.json
     Editor/…
@@ -130,8 +130,10 @@ character rigs.
 
 **Actions** — **Copy Pose**, **Paste Pose**, **Paste Pose Flipped**, plus a
 buffer readout and **Clear**. The **Paste Flipped: selected bones only** toggle
-limits a flip to the bones you've selected in the Hierarchy (a center bone flips
-onto itself); with nothing specific selected it flips the whole rig.
+writes the mirrored pose onto the *partner* of each bone you've selected in the
+Hierarchy (select the left arm to flip the pose onto the right; a center bone
+flips onto itself), and the changed bones flash red in the overlay. With nothing
+specific selected it flips the whole rig.
 
 The pose buffer persists across selection changes and script recompiles /
 play-mode toggles; it clears on a full editor restart.
@@ -143,11 +145,11 @@ play-mode toggles; it clears on a full editor restart.
 Copy / Paste / Paste Flipped are exposed as **rebindable** shortcuts so you can
 keep focus on the Animation window. Defaults (unbound in a stock Unity install):
 
-| Action             | Default        |
-| ------------------ | -------------- |
-| Copy Pose          | `Alt+Shift+C`  |
-| Paste Pose         | `Alt+Shift+V`  |
-| Paste Pose Flipped | `Alt+Shift+F`  |
+| Action             | Default       |
+| ------------------ | ------------- |
+| Copy Pose          | `Alt+Shift+C` |
+| Paste Pose         | `Alt+Shift+V` |
+| Paste Pose Flipped | `Alt+Shift+F` |
 
 Rebind them in **Edit ▸ Shortcuts…** — search **"Pose Tools"**.
 
@@ -163,18 +165,15 @@ always comes down to the naming convention or what's selected:
    missing or land in **Unmatched**, fix the preset / suffix / case / prefix
    toggle until the pairing is right. A wrong convention looks like "the flip
    did nothing" or "only some limbs flipped".
-
 2. **Copy the whole rig, not one bone.** Paste Flipped reads each bone's mirror
    partner from the buffer, so the buffer must contain *both* sides. The window
    copies the whole locked rig for you; if you copy with only a single child bone
    selected (via the hotkey, no window open), you capture just that sub-tree and
    the partners are missing. The console logs how many bones had no partner.
-
 3. **Check the symmetry axis.** Most characters are symmetric across **X** (the
    left/right axis). If yours was authored facing a different way, try **Y** or
    **Z**. A wrong axis looks like the pose mirroring *up/down* or *front/back*
    instead of *left/right*.
-
 4. **Re-test with Undo.** Every paste is a single Undo step, so `Ctrl/Cmd+Z` and
    try again freely.
 
@@ -198,7 +197,7 @@ versions). Instead it relies only on public, long-lived APIs:
 
 ## Repo layout
 
-```
+```javascript
 /package.json
 /README.md
 /LICENSE
