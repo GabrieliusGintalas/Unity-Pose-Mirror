@@ -227,15 +227,17 @@ namespace GabeGin.PoseTools
                 ? UnityEngine.Rendering.CompareFunction.Always
                 : UnityEngine.Rendering.CompareFunction.LessEqual;
 
-            // A bone's octahedron runs parent -> bone, so it "belongs" to the
-            // child bone; fill it solid green when that bone is selected.
+            // Each octahedron runs from a bone (head) out to a child (tail), so it
+            // represents the HEAD bone. Fill it green when the head bone is
+            // selected, so the highlight is the bone in FRONT of the selected joint
+            // — not the segment coming in from the parent.
             for (int i = 0; i < bones.Count; i++)
             {
                 var b = bones[i];
                 if (b == null) continue;
                 var parentBone = NearestBoneAncestor(b, boneSet);
                 if (parentBone == null) continue;
-                bool isSel = selected.Contains(b.gameObject);
+                bool isSel = selected.Contains(parentBone.gameObject);
                 DrawOctahedronBone(parentBone.position, b.position,
                     isSel ? kSelBoneColor : kBoneColor, isSel, kSelBoneFill);
             }

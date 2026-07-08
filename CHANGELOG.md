@@ -19,9 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   orientation with no per-component sign tuning — matching Blender's Paste
   X-Flipped. Optionally scoped to just the bones selected in the Hierarchy (a
   center bone flips onto itself).
-- **Scene-view skeleton overlay** — draws the rig's bones as clickable octahedral
-  gizmos in the Scene view (Blender-style); click a bone in the viewport to select
-  it. Selecting a child bone keeps the parent rig as the edit target.
+- **Scene-view skeleton overlay** — draws the rig's bones as octahedral gizmos in
+  the Scene view (Blender-style). Click a bone in the viewport to select it, or
+  Shift/Ctrl/Cmd-click to multi-select; selected bones fill solid light-green.
+  Selecting a child bone keeps the parent rig as the edit target. An in-viewport
+  panel toggles overlay visibility and on-top (x-ray) rendering; the same toggles
+  live in the window.
 - **Generic skeleton discovery** — uses `SkinnedMeshRenderer.bones` when present,
   otherwise every descendant Transform. No assumptions about names, root, rig
   type, or bone count. Humanoid not required.
@@ -36,7 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Animation window integration** — requires `AnimationMode` (Record) to be
   active and records keyframes on the current frame via `Undo.RecordObject`; no
   reflection into internal Animation window APIs. Live record-state / target
-  readout.
+  readout, plus a warning when the rig is Humanoid (whose clips key muscle values
+  rather than the raw transforms this tool reads/writes).
 - **Rebindable shortcuts** for Copy / Paste / Paste Flipped
   (`Alt+Shift+C/V/F` by default) via the Shortcut Manager.
 - Editor-only assembly definition so nothing leaks into player builds.
