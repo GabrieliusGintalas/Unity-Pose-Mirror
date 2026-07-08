@@ -642,26 +642,20 @@ namespace GabeGin.PoseTools
                 BonePose pose;
                 if (!PoseBuffer.TryResolveByName(partnerName, pathHint, out pose)) { noPartner++; continue; }
 
-                // Mirror in ROOT space, then re-express in this bone's local space
-                // relative to its live parent. Root-space (not parent-local) is
-                // what makes the flip correct for any bone orientation — Blender's
-                // behaviour — instead of needing per-bone sign tweaks.
-                Vector3 worldPos = root.TransformPoint(settings.mirror.MirrorRootPosition(pose.rootPosition));
+                // ROTATION ONLY. Mirror the partner's orientation in ROOT space
+                // (correct for any bone orientation — Blender's behaviour), then
+                // re-express it in this bone's local space relative to its live
+                // (already-mirrored, parent-first) parent. Position and scale are
+                // left untouched: a pose flip swaps orientations, it must not move
+                // bones off their rest offsets or the rig stretches/detaches.
                 Quaternion worldRot = rootRot * settings.mirror.MirrorRootRotation(pose.rootRotation);
 
                 Undo.RecordObject(b, "Paste Pose Flipped");
                 Transform parent = b.parent;
                 if (parent != null)
-                {
-                    b.localPosition = parent.InverseTransformPoint(worldPos);
                     b.localRotation = Quaternion.Inverse(parent.rotation) * worldRot;
-                }
                 else
-                {
-                    b.position = worldPos;
                     b.rotation = worldRot;
-                }
-                b.localScale = pose.localScale; // scale is transferred, not mirrored
 
                 applied++;
                 used.Add(pose.Key);

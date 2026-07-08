@@ -13,12 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fallback for duplicate names / identical-rig instances.
 - **Paste Pose** — reapplies the copied local TRS by bone name, wrapped in a
   single Undo group.
-- **Paste Pose Flipped** — applies the copied pose mirrored left↔right using the
-  configured naming convention. The reflection is computed in the rig's own
-  space (not each bone's parent-local space), so it's correct for any bone
-  orientation with no per-component sign tuning — matching Blender's Paste
-  X-Flipped. Optionally scoped to just the bones selected in the Hierarchy (a
-  center bone flips onto itself).
+- **Paste Pose Flipped** — swaps each bone with its left↔right pair and applies
+  the partner's mirrored ROTATION (position and scale are preserved, so bones
+  keep their rest offsets). The reflection is computed in the rig's own space
+  (not each bone's parent-local space), so it's correct for any bone orientation
+  with no per-component sign tuning — matching Blender's Paste X-Flipped.
+  Optionally scoped to just the bones selected in the Hierarchy (a center bone
+  flips onto itself).
 - **Scene-view skeleton overlay** — draws the rig's bones as octahedral gizmos in
   the Scene view (Blender-style). Click a bone in the viewport to select it, or
   Shift/Ctrl/Cmd-click to multi-select; selected bones fill solid light-green.
